@@ -18,9 +18,9 @@
 | 变量 | 说明 |
 |---|---|
 | `VOLCAN_API_KEY` | 火山方舟 API Key(必填) |
-| `VOLCAN_BASE_URL` | 火山方舟接入地址,如 `https://ark.cn-beijing.volces.com/api/v3` |
-| `EMBED_MODEL` | Embedding 模型,默认 `doubao-embedding-vision-251215` |
-| `CHAT_MODEL` | 对话模型,默认 `doubao-seed-2-1-pro-260628` |
+| `VOLCAN_BASE_URL` | 火山方舟接入地址,如 `xxx` |
+| `EMBED_MODEL` | Embedding 模型,默认 `xxx` |
+| `CHAT_MODEL` | 对话模型,默认 `xxx` |
 | `DOC_PATH` | 问答文档路径,默认 `sample.txt` |
 
 ## 运行步骤
