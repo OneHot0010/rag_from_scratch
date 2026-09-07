@@ -1,54 +1,62 @@
-# rag_from_scratch · 阶段1 最简 Demo(Naive RAG)
+# 阶段2 · 多数据格式接入 + 工程化拆分
 
-从零手写一个最小可问答的 RAG,embedding 与 chat 都接火山(豆包)模型:
+在阶段1(单文件 Naive RAG)基础上完成两件事:
 
-`加载 txt → 固定长度切分 → 向量化 → 内存向量库 → Top-K 检索 → 拼 Prompt → LLM 生成`
+1. **数据格式抽象为接口**:每种格式一个 `DataLoader` 子类。本阶段实现
+   **Excel / CSV**(及 text),其余 PDF / Word / Markdown / HTML 仅预留接口
+   (调用即抛 `NotImplementedError`),便于后续渐进扩展。
+2. **按功能拆分模块**:原 `demo.py` 的加载/切分/向量化/检索/生成拆到
+   `ragcore/` 各文件,职责单一、便于维护与测试。
 
-不依赖 LangChain / LlamaIndex,便于看清 RAG 的完整机理。
+## 目录结构
+```
+main.py                     # 交互式入口(支持多文件、按扩展名自动分派)
+demo.py                     # 阶段1 原始单文件版本(保留对照)
+ragcore/
+  config.py                 # 集中配置(.env / 环境变量)
+  models.py                 # Document 数据模型(content + metadata 溯源)
+  splitter.py               # 固定长度切分(带 overlap)
+  embedder.py               # 文本向量化(Ark embeddings)
+  vector_store.py           # 内存向量库 + Top-K 余弦检索
+  generator.py              # 拼 Prompt 调 LLM 生成(防幻觉)
+  pipeline.py               # RAG 编排:加载→切分→向量化→检索→生成
+  loaders/
+    base.py                 # DataLoader 抽象接口 + 数据模型契约
+    text_loader.py          # .txt / .text        [已实现]
+    csv_loader.py           # .csv(标准库)       [已实现]
+    excel_loader.py         # .xlsx / .xlsm(openpyxl) [已实现]
+    stub_loaders.py         # PDF/Word/Markdown/HTML  [仅接口]
+    registry.py             # 按扩展名分派的注册表
+```
 
-## 文件说明
-| 文件 | 作用 |
-|---|---|
-| `rag_stage1_demo.py` | 阶段1 主程序,交互式问答 |
-| `sample.txt` | 示例知识库(RAG 基础知识) |
-| `requirements.txt` | 依赖清单 |
-| `.env` | 火山密钥与模型配置(勿提交到 git) |
-
-## 环境变量(`.env`)
-| 变量 | 说明 |
-|---|---|
-| `VOLCAN_API_KEY` | 火山方舟 API Key(必填) |
-| `VOLCAN_BASE_URL` | 火山方舟接入地址,如 `xxx` |
-| `EMBED_MODEL` | Embedding 模型,默认 `xxx` |
-| `CHAT_MODEL` | 对话模型,默认 `xxx` |
-| `DOC_PATH` | 问答文档路径,默认 `sample.txt` |
+## 接口设计要点
+- `DataLoader`(`loaders/base.py`)统一契约:声明 `extensions`,实现
+  `load(path) -> List[Document]`。
+- `Document`(`models.py`)携带 `content` 与 `metadata`(source / sheet /
+  row / chunk 等),使检索结果可溯源。
+- `LoaderRegistry`(`loaders/registry.py`)按扩展名分派;**新增格式只需
+  实现子类并注册,不改动核心流程**(开闭原则)。
 
 ## 运行步骤
-1. 建虚拟环境(可选): `python3 -m venv .venv`,再激活(macOS/Linux: `source .venv/活动脚本`,即 activate)
-2. 安装依赖: `pip install -r requirements.txt`
-3. 配置 `.env`,至少填入 `VOLCAN_API_KEY` 与 `VOLCAN_BASE_URL`
-4. 运行: `python rag_stage1_demo.py`
+1. 安装依赖: `pip install -r requirements.txt`
+2. 配置密钥: `cp .env.example .env`,填入 `VOLCAN_API_KEY`(内部网关填 `VOLCAN_BASE_URL`)
+3. 运行:
+   ```bash
+   python main.py                 # 用 .env 里的 DOC_PATH
+   python main.py sample.csv      # 指定 CSV
+   python main.py a.txt b.xlsx    # 多文件混合接入
+   ```
 
-## 链路说明(对应代码)
-| 步骤 | 函数 | 说明 |
+## 已支持格式
+| 格式 | 扩展名 | 状态 |
 |---|---|---|
-| 加载 | `load_text` | 读取单个 txt 文档 |
-| 切分 | `split_text` | 固定长度切分,`chunk_size=300, overlap=50`,重叠防止上下文断裂 |
-| 向量化 | `embed` | 调火山 `multimodal_embeddings`,只传 `text` 类型 |
-| 检索 | `retrieve` | 内存向量库 + 余弦相似度,取 Top-K(默认 3) |
-| 生成 | `generate` | 拼 Prompt 调火山 `chat.completions`,约束"仅依据上下文,无则答『文档中未提及』" |
-
-## 火山模型调用要点
-- 客户端: `Ark(api_key=VOLCAN_API_KEY, base_url=VOLCAN_BASE_URL)`
-- 向量化: `client.multimodal_embeddings.create(model=EMBED_MODEL, input=[{"type":"text","text":...}])`,取 `resp.data.embedding`
-- 对话: `client.chat.completions.create(model=CHAT_MODEL, messages=[...], temperature=0)`,取 `resp.choices[0].message.content`
-
-## 示例问答
-输入「RAG 的三个阶段是什么?」后,程序会先打印检索到的 chunk 及余弦相似度,再输出基于上下文的答案。
-
-## 验收标准(Checkpoint)
-- 对文档内问题能给出正确答案
-- 能打印出被检索到的 chunk 及相似度
+| 文本 | .txt / .text | ✅ 已实现 |
+| CSV | .csv | ✅ 已实现 |
+| Excel | .xlsx / .xlsm | ✅ 已实现 |
+| PDF | .pdf | 🔲 仅接口 |
+| Word | .docx / .doc | 🔲 仅接口 |
+| Markdown | .md / .markdown | 🔲 仅接口 |
+| HTML | .html / .htm | 🔲 仅接口 |
 
 ## 下一阶段
-阶段2「多数据格式接入」:让加载器支持 PDF / Word / Markdown / HTML 等真实格式,并保留元数据(来源、页码)。
+逐一实现预留的 PDF / Word / Markdown / HTML loader,并升级向量库为持久化方案(Chroma / Milvus / Qdrant)。
