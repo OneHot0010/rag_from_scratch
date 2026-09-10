@@ -18,6 +18,7 @@ class Settings:
     doc_path: str = os.getenv("DOC_PATH", "sample.txt")
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "300"))
     overlap: int = int(os.getenv("OVERLAP", "50"))
+    split_strategy: str = os.getenv("SPLIT_STRATEGY", "recursive")
     top_k: int = int(os.getenv("TOP_K", "3"))
 
 
